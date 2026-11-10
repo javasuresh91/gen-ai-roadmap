@@ -69,10 +69,42 @@ function filebar(file) {
   open.target = "_blank";
   open.rel = "noopener";
   open.textContent = "Open in new tab";
-  actions.appendChild(open);
+  const fs = document.createElement("button");
+  fs.className = "fs-btn";
+  fs.onclick = toggleFull;
+  actions.append(fs, open);
   bar.append(title, actions);
+  syncFullButtons();
   return { bar, actions };
 }
+
+// Full screen: the content area (file bar + viewer) fills the screen.
+// Falls back to a CSS overlay where the Fullscreen API is unavailable (e.g. iPhone).
+const isFull = () =>
+  document.fullscreenElement === viewer || viewer.classList.contains("pseudo-full");
+
+function syncFullButtons() {
+  document.querySelectorAll(".fs-btn").forEach(b => {
+    b.textContent = isFull() ? "Exit full screen" : "Full screen";
+  });
+}
+
+function toggleFull() {
+  if (isFull()) {
+    viewer.classList.remove("pseudo-full");
+    if (document.fullscreenElement) document.exitFullscreen();
+  } else if (viewer.requestFullscreen) {
+    viewer.requestFullscreen().catch(() => viewer.classList.add("pseudo-full"));
+  } else {
+    viewer.classList.add("pseudo-full");
+  }
+  syncFullButtons();
+}
+
+document.addEventListener("fullscreenchange", syncFullButtons);
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && viewer.classList.contains("pseudo-full")) toggleFull();
+});
 
 async function show(path) {
   const file = files.find(f => f.path === path);
@@ -81,6 +113,7 @@ async function show(path) {
   sidebar.classList.remove("open");
   const { bar, actions } = filebar(file);
   viewer.replaceChildren(bar);
+  syncFullButtons();
 
   if (file.type === "python") {
     const res = await fetch(file.url);
@@ -118,7 +151,15 @@ document.getElementById("search").addEventListener("input", e => {
   if (!q) return renderTree(files, true);
   renderTree(files.filter(f => f.path.toLowerCase().includes(q)), true);
 });
-document.getElementById("menu").onclick = () => sidebar.classList.toggle("open");
+const isMobile = () => window.matchMedia("(max-width: 800px)").matches;
+try {
+  if (localStorage.getItem("sidebarCollapsed") === "1") document.body.classList.add("sidebar-collapsed");
+} catch (e) {}
+document.getElementById("menu").onclick = () => {
+  if (isMobile()) return sidebar.classList.toggle("open");
+  const collapsed = document.body.classList.toggle("sidebar-collapsed");
+  try { localStorage.setItem("sidebarCollapsed", collapsed ? "1" : "0"); } catch (e) {}
+};
 window.addEventListener("hashchange", route);
 
 fetch("files.json")
